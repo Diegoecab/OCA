@@ -139,7 +139,130 @@ WHERE EXISTS (
   ) F
   WHERE F.device_id = GT.device_id
 )
-FETCH FIRST 100 ROWS ONLY;
+FETCH FIRST 10000 ROWS ONLY;
 
 -- Tip:
 -- After running any SELECT above, click the Visualize icon in SQL Developer to see a graph view.
+
+PROMPT === Fan-out: Devices -> Accounts in last 7 days (first 200) ===
+SELECT
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
+  device_id,
+  account_id,
+  edge_label
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a IS account)-[p IS performed_transaction]->(t IS transaction)-[h IS has_device]->(d IS device)
+  WHERE t.transaction_date >= SYSDATE - 7
+  COLUMNS (
+    TO_CHAR(d.device_id) || '->' || TO_CHAR(a.account_id) AS EDGE_ID,
+    VERTEX_ID(d) AS SRC_VERTEX_ID,
+    VERTEX_ID(a) AS DST_VERTEX_ID,
+    d.device_id   AS device_id,
+    a.account_id  AS account_id,
+    'device_to_account_7d' AS edge_label
+  )
+) GT
+FETCH FIRST 200 ROWS ONLY;
+
+PROMPT === Fan-in: Flagged Transactions -> Merchants in last 7 days (first 200) ===
+SELECT
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
+  transaction_id,
+  merchant_id,
+  edge_label
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
+  WHERE t.is_flagged = 1
+    AND t.transaction_date >= SYSDATE - 7
+  COLUMNS (
+    EDGE_ID(pm)        AS EDGE_ID,
+    VERTEX_ID(t)       AS SRC_VERTEX_ID,
+    VERTEX_ID(m)       AS DST_VERTEX_ID,
+    t.transaction_id   AS transaction_id,
+    m.merchant_id      AS merchant_id,
+    'flagged_paid_to_7d' AS edge_label
+  )
+) GT
+FETCH FIRST 200 ROWS ONLY;
+
+PROMPT === One-to-many (synthetic): Accounts -> Devices in last 30 days (first 200) ===
+-- Synthetic edge consolidating (account)-performed_transaction->(transaction)-has_device->(device)
+SELECT
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
+  account_id,
+  device_id,
+  edge_label
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a IS account)-[p IS performed_transaction]->(t IS transaction)-[h IS has_device]->(d IS device)
+  WHERE t.transaction_date >= SYSDATE - 30
+  COLUMNS (
+    TO_CHAR(a.account_id) || '->' || TO_CHAR(d.device_id) AS EDGE_ID,
+    VERTEX_ID(a) AS SRC_VERTEX_ID,
+    VERTEX_ID(d) AS DST_VERTEX_ID,
+    a.account_id AS account_id,
+    d.device_id  AS device_id,
+    'account_to_device_30d' AS edge_label
+  )
+) GT
+FETCH FIRST 200 ROWS ONLY;
+
+PROMPT === Many-to-one: All Transactions -> Merchants (first 200) ===
+-- Non-flagged inclusive; shows many transactions converging on merchants
+SELECT
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
+  transaction_id,
+  merchant_id,
+  edge_label
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
+  COLUMNS (
+    EDGE_ID(pm)        AS EDGE_ID,
+    VERTEX_ID(t)       AS SRC_VERTEX_ID,
+    VERTEX_ID(m)       AS DST_VERTEX_ID,
+    t.transaction_id   AS transaction_id,
+    m.merchant_id      AS merchant_id,
+    'paid_to'          AS edge_label
+  )
+) GT
+FETCH FIRST 200 ROWS ONLY;
+
+PROMPT === Two-hop ribbons: Accounts -> Transactions and Transactions -> Merchants (first 200 edges) ===
+-- Returns both edge types to visualize a typical purchase ribbon
+SELECT
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
+  edge_label
+FROM (
+  SELECT EDGE_ID(p) AS EDGE_ID, VERTEX_ID(a) AS SRC_VERTEX_ID, VERTEX_ID(t) AS DST_VERTEX_ID, 'performed_transaction' AS edge_label
+  FROM GRAPH_TABLE(fraud_graph MATCH
+    (a IS account)-[p IS performed_transaction]->(t IS transaction)
+    COLUMNS (
+      EDGE_ID(p)   AS EDGE_ID,
+      VERTEX_ID(a) AS SRC_VERTEX_ID,
+      VERTEX_ID(t) AS DST_VERTEX_ID
+    )
+  ) GT1
+  UNION ALL
+  SELECT EDGE_ID(pm) AS EDGE_ID, VERTEX_ID(t) AS SRC_VERTEX_ID, VERTEX_ID(m) AS DST_VERTEX_ID, 'paid_to' AS edge_label
+  FROM GRAPH_TABLE(fraud_graph MATCH
+    (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
+    COLUMNS (
+      EDGE_ID(pm)  AS EDGE_ID,
+      VERTEX_ID(t) AS SRC_VERTEX_ID,
+      VERTEX_ID(m) AS DST_VERTEX_ID
+    )
+  ) GT2
+)
+FETCH FIRST 200 ROWS ONLY;
+
+-- Tip:
+-- After running any of these SELECTs, use the Visualize icon in SQL Developer to render the fan-in/fan-out structures.
