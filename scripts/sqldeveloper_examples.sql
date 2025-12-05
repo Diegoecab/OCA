@@ -7,13 +7,13 @@
 
 PROMPT === Q1 Vertices: Accounts (first 100) ===
 SELECT
-  vertex_id,
+  VERTEX_ID,
   label,
   account_id
 FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)
   COLUMNS (
-    id(a) AS vertex_id,
+    VERTEX_ID(a) AS VERTEX_ID,
     'account'   AS label,
     a.account_id AS account_id
   )
@@ -22,14 +22,14 @@ FETCH FIRST 100 ROWS ONLY;
 
 PROMPT === Q1 Vertices: Transactions (first 100) ===
 SELECT
-  vertex_id,
+  VERTEX_ID,
   label,
   transaction_id,
   risk_score
 FROM GRAPH_TABLE(fraud_graph MATCH
   (t IS transaction)
   COLUMNS (
-    id(t)       AS vertex_id,
+    VERTEX_ID(t)       AS VERTEX_ID,
     'transaction'     AS label,
     t.transaction_id  AS transaction_id,
     t.risk_score      AS risk_score
@@ -39,16 +39,16 @@ FETCH FIRST 100 ROWS ONLY;
 
 PROMPT === Q1 Edges: performed_transaction (first 100) ===
 SELECT
-  edge_id,
-  src_vertex_id,
-  dst_vertex_id,
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
   edge_label
 FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)-[e IS performed_transaction]->(t IS transaction)
   COLUMNS (
-    id(e)       AS edge_id,
-    id(a)       AS src_vertex_id,
-    id(t)       AS dst_vertex_id,
+    EDGE_ID(e)       AS EDGE_ID,
+    VERTEX_ID(a)       AS SRC_VERTEX_ID,
+    VERTEX_ID(t)       AS DST_VERTEX_ID,
     'performed_transaction' AS edge_label
   )
 ) GT
@@ -56,9 +56,9 @@ FETCH FIRST 100 ROWS ONLY;
 
 PROMPT === Q2 Edges: High-risk (>= 90) has_device (first 100) ===
 SELECT
-  edge_id,
-  src_vertex_id,
-  dst_vertex_id,
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
   transaction_id,
   device_id,
   risk_score,
@@ -67,9 +67,9 @@ FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)-[p IS performed_transaction]->(t IS transaction)-[h IS has_device]->(d IS device)
   WHERE t.risk_score >= 90
   COLUMNS (
-    id(h)         AS edge_id,
-    id(t)         AS src_vertex_id,
-    id(d)         AS dst_vertex_id,
+    EDGE_ID(h)         AS EDGE_ID,
+    VERTEX_ID(t)         AS SRC_VERTEX_ID,
+    VERTEX_ID(d)         AS DST_VERTEX_ID,
     t.transaction_id  AS transaction_id,
     d.device_id       AS device_id,
     t.risk_score      AS risk_score,
@@ -80,9 +80,9 @@ FETCH FIRST 100 ROWS ONLY;
 
 PROMPT === Q3 Edges: Flagged paid_to (first 100) ===
 SELECT
-  edge_id,
-  src_vertex_id,
-  dst_vertex_id,
+  EDGE_ID,
+  SRC_VERTEX_ID,
+  DST_VERTEX_ID,
   transaction_id,
   merchant_id,
   is_flagged,
@@ -91,9 +91,9 @@ FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
   WHERE t.is_flagged = 1
   COLUMNS (
-    id(pm)        AS edge_id,
-    id(t)         AS src_vertex_id,
-    id(m)         AS dst_vertex_id,
+    EDGE_ID(pm)        AS EDGE_ID,
+    VERTEX_ID(t)         AS SRC_VERTEX_ID,
+    VERTEX_ID(m)         AS DST_VERTEX_ID,
     t.transaction_id  AS transaction_id,
     m.merchant_id     AS merchant_id,
     t.is_flagged      AS is_flagged,
@@ -105,9 +105,9 @@ FETCH FIRST 100 ROWS ONLY;
 PROMPT === Q4 (bounded) Synthetic Edges: Account pairs sharing a device in last 7 days (first 100) ===
 -- This creates a synthetic edge between accounts that shared a device recently, with a degree cap to avoid explosion.
 SELECT
-  edge_id,           -- synthetic edge id suitable for visualization
-  src_vertex_id,     -- a1 vertex_id
-  dst_vertex_id,     -- a2 vertex_id
+  EDGE_ID,           -- synthetic edge id suitable for visualization
+  SRC_VERTEX_ID,     -- a1 vertex_id
+  DST_VERTEX_ID,     -- a2 vertex_id
   a1_id,
   a2_id,
   device_id,
@@ -120,9 +120,9 @@ FROM GRAPH_TABLE(fraud_graph MATCH
     AND t2.transaction_date >= SYSDATE - 7
   COLUMNS (
     -- synthetic identifiers for visualization
-    TO_CHAR(a1.account_id) || '-' || TO_CHAR(a2.account_id) || '-' || TO_CHAR(d.device_id) AS edge_id,
-    id(a1) AS src_vertex_id,
-    id(a2) AS dst_vertex_id,
+    TO_CHAR(a1.account_id) || '-' || TO_CHAR(a2.account_id) || '-' || TO_CHAR(d.device_id) AS EDGE_ID,
+    VERTEX_ID(a1) AS SRC_VERTEX_ID,
+    VERTEX_ID(a2) AS DST_VERTEX_ID,
     a1.account_id AS a1_id,
     a2.account_id AS a2_id,
     d.device_id   AS device_id,
