@@ -268,36 +268,30 @@ FETCH FIRST 200 ROWS ONLY;
 -- After running any of these SELECTs, use the Visualize icon in SQL Developer to render the fan-in/fan-out structures.
 
 PROMPT === Potential Fraud Verification: Shared device flagged account pairs (last 7 days) ===
--- Lists account pairs that share a device with flagged transactions within the last 7 days.
--- Increase HAVING threshold to tighten signal (e.g., >= 3)
+-- Emits edges for visualization and aggregates frequency per (device, a1, a2).
 SELECT
-  did       AS device_id,
-  a1        AS account_1,
-  a2        AS account_2,
-  flagged_count
-FROM (
-  SELECT
-    d.device_id AS did,
-    a1.account_id AS a1,
-    a2.account_id AS a2,
-    COUNT(*) AS flagged_count
-  FROM GRAPH_TABLE(fraud_graph MATCH
-    (a1 IS account)-[p1 IS performed_transaction]->(t1 IS transaction)-[h1 IS has_device]->(d IS device),
-    (a2 IS account)-[p2 IS performed_transaction]->(t2 IS transaction)-[h2 IS has_device]->(d IS device)
-    WHERE a1.account_id < a2.account_id
-      AND (t1.is_flagged = 1 OR t2.is_flagged = 1)
-      AND t1.transaction_date >= SYSDATE - 7
-      AND t2.transaction_date >= SYSDATE - 7
-    COLUMNS (
-      a1.account_id AS a1,
-      a2.account_id AS a2,
-      d.device_id   AS device_id
-    )
-  ) GT
-  GROUP BY d.device_id, a1, a2
-  HAVING COUNT(*) >= 2
-) S
-ORDER BY flagged_count DESC, device_id, account_1, account_2
+  TO_CHAR(did) || ':' || TO_CHAR(src_v) || '->' || TO_CHAR(dst_v) AS EDGE_ID,
+  src_v AS SRC_VERTEX_ID,
+  dst_v AS DST_VERTEX_ID,
+  did   AS device_id,
+  COUNT(*) AS flagged_count,
+  'shared_device_flagged_7d' AS edge_label
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a1 IS account)-[p1 IS performed_transaction]->(t1 IS transaction)-[h1 IS has_device]->(d IS device),
+  (a2 IS account)-[p2 IS performed_transaction]->(t2 IS transaction)-[h2 IS has_device]->(d IS device)
+  WHERE a1.account_id < a2.account_id
+    AND (t1.is_flagged = 1 OR t2.is_flagged = 1)
+    AND t1.transaction_date >= SYSDATE - 7
+    AND t2.transaction_date >= SYSDATE - 7
+  COLUMNS (
+    VERTEX_ID(a1) AS src_v,
+    VERTEX_ID(a2) AS dst_v,
+    d.device_id   AS did
+  )
+) GT
+GROUP BY did, src_v, dst_v
+HAVING COUNT(*) >= 2
+ORDER BY flagged_count DESC, device_id
 FETCH FIRST 200 ROWS ONLY;
 
 PROMPT === Potential Fraud Verification: Merchants with many flagged transactions (last 7 days) ===
@@ -319,4 +313,4 @@ FROM GRAPH_TABLE(fraud_graph MATCH
 GROUP BY MERCHANT_VERTEX_ID, merchant_id
 HAVING COUNT(*) >= 3
 ORDER BY flagged_tx_last_7d DESC, merchant_id
-FETCH FIRST 200 ROWS ONLY;
+FETCH FIRST 20000 ROWS ONLY;
