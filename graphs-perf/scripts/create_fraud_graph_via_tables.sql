@@ -69,6 +69,8 @@ FROM transactions t;
 PROMPT === Add Oracle Spatial column and metadata for transaction locations ===
 ALTER TABLE fraud_transactions_t ADD (tx_location SDO_GEOMETRY);
 
+
+ALTER TABLE fraud_transactions_t ADD (tx_long NUMBER, tx_lat NUMBER);
 BEGIN
   INSERT INTO user_sdo_geom_metadata (table_name, column_name, diminfo, srid)
   VALUES ('FRAUD_TRANSACTIONS_T','TX_LOCATION',
@@ -176,7 +178,7 @@ CREATE PROPERTY GRAPH fraud_graph
   VERTEX TABLES (
     fraud_customers_t   KEY (customer_id) LABEL customer  PROPERTIES (customer_id, first_name, last_name, risk_score, is_flagged),
     fraud_accounts_t    KEY (account_id)  LABEL account   PROPERTIES (account_id, account_number, account_type, balance, risk_score, is_flagged),
-    fraud_transactions_t KEY (transaction_id) LABEL transaction PROPERTIES (transaction_id, amount, transaction_date, risk_score, is_flagged, tx_location),
+    fraud_transactions_t KEY (transaction_id) LABEL transaction PROPERTIES (transaction_id, amount, transaction_date, risk_score, is_flagged, tx_long, tx_lat),
     fraud_devices_t     KEY (device_id)   LABEL device    PROPERTIES (device_id, device_fingerprint, device_type, risk_score, is_flagged),
     fraud_merchants_t   KEY (merchant_id) LABEL merchant  PROPERTIES (merchant_id, merchant_name, category, risk_score, is_flagged)
   )
