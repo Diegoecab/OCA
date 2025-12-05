@@ -301,9 +301,10 @@ ORDER BY flagged_count DESC, device_id, account_1, account_2
 FETCH FIRST 200 ROWS ONLY;
 
 PROMPT === Potential Fraud Verification: Merchants with many flagged transactions (last 7 days) ===
--- Aggregates per-merchant flagged transactions over the last 7 days.
+-- Adds MERCHANT_VERTEX_ID to satisfy SQL Developer Visualization (vertex view).
 -- Increase HAVING threshold to surface higher-risk merchants (e.g., >= 5)
 SELECT
+  MERCHANT_VERTEX_ID,
   merchant_id,
   COUNT(*) AS flagged_tx_last_7d
 FROM GRAPH_TABLE(fraud_graph MATCH
@@ -311,10 +312,11 @@ FROM GRAPH_TABLE(fraud_graph MATCH
   WHERE t.is_flagged = 1
     AND t.transaction_date >= SYSDATE - 7
   COLUMNS (
-    m.merchant_id AS merchant_id
+    VERTEX_ID(m)   AS MERCHANT_VERTEX_ID,
+    m.merchant_id  AS merchant_id
   )
 ) GT
-GROUP BY merchant_id
+GROUP BY MERCHANT_VERTEX_ID, merchant_id
 HAVING COUNT(*) >= 3
 ORDER BY flagged_tx_last_7d DESC, merchant_id
 FETCH FIRST 200 ROWS ONLY;
