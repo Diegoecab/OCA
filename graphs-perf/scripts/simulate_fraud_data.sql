@@ -63,6 +63,33 @@ SELECT
   88888802
 FROM dual CONNECT BY LEVEL <= 6;
 
+PROMPT === Set locations (tx_location) for injected rows (NORTH for shared; SOUTH for many-to-one) ===
+-- NORTH hemisphere for shared-device set (transaction_id 900000000–900000199)
+UPDATE fraud_transactions_t
+SET tx_location = SDO_GEOMETRY(
+  2001, 4326,
+  SDO_POINT_TYPE(
+    -100 + MOD(transaction_id, 200),  -- LONG
+    10 + MOD(transaction_id, 50),     -- LAT
+    NULL
+  ),
+  NULL, NULL
+)
+WHERE transaction_id BETWEEN 900000000 AND 900000199;
+
+-- SOUTH hemisphere for many-to-one set (transaction_id 900000200–900000299)
+UPDATE fraud_transactions_t
+SET tx_location = SDO_GEOMETRY(
+  2001, 4326,
+  SDO_POINT_TYPE(
+    -60 + MOD(transaction_id, 120),   -- LONG
+    -10 - MOD(transaction_id, 50),    -- LAT
+    NULL
+  ),
+  NULL, NULL
+)
+WHERE transaction_id BETWEEN 900000200 AND 900000299;
+
 PROMPT === Ensure Customer->Device mapping for the shared device (idempotent) ===
 INSERT INTO fraud_customer_devices_t (customer_id, device_id)
 WITH acc AS (

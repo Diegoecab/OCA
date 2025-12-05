@@ -4,24 +4,32 @@ SET FEEDBACK ON
 SET DEFINE OFF
 WHENEVER SQLERROR CONTINUE
 
-SPOOL scripts\create_fraud_graph_via_tables_out.txt
+SPOOL scripts/create_fraud_graph_via_tables_out.txt
 
+-- Adjust connection as needed; if already connected, you can comment this line.
 CONNECT graphuser/Admin123@//localhost:1521/FREEPDB1
 
 PROMPT === Drop existing graph (ignore if missing) ===
-DROP PROPERTY GRAPH fraud_graph;
+BEGIN
+  BEGIN
+    EXECUTE IMMEDIATE 'DROP PROPERTY GRAPH fraud_graph';
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+END;
+/
 
 PROMPT === Drop existing derived tables (ignore if missing) ===
 BEGIN
   FOR t IN (SELECT table_name FROM user_tables WHERE table_name IN (
     'FRAUD_CUSTOMERS_T','FRAUD_ACCOUNTS_T','FRAUD_TRANSACTIONS_T',
-    'FRAUD_DEVICES_T','FRAUD_MERCHANTS_T','FRAUD_CUSTOMER_DEVICES_T'
+    'FRAUD_DEVICES_T','FRAUD_MERCHANTS_T','FRAUD_CUSTOMER_DEVICES_T',
+    'FRAUD_REGIONS_T'
   )) LOOP
     EXECUTE IMMEDIATE 'DROP TABLE '||t.table_name||' PURGE';
   END LOOP;
 END;
 /
- 
+
 PROMPT === Create base tables (no materialized views) ===
 -- Customers
 CREATE TABLE fraud_customers_t AS
@@ -58,6 +66,21 @@ SELECT
   t.merchant_id                               AS merchant_id
 FROM transactions t;
 
+PROMPT === Add Oracle Spatial column and metadata for transaction locations ===
+ALTER TABLE fraud_transactions_t ADD (tx_location SDO_GEOMETRY);
+
+BEGIN
+  INSERT INTO user_sdo_geom_metadata (table_name, column_name, diminfo, srid)
+  VALUES ('FRAUD_TRANSACTIONS_T','TX_LOCATION',
+          SDO_DIM_ARRAY(
+            SDO_DIM_ELEMENT('LONG', -180, 180, 0.5),
+            SDO_DIM_ELEMENT('LAT',  -90,  90,  0.5)
+          ), 4326);
+EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+CREATE INDEX idx_ft_txloc ON fraud_transactions_t(tx_location) INDEXTYPE IS MDSYS.SPATIAL_INDEX;
+
 -- Devices (distinct from transactions)
 CREATE TABLE fraud_devices_t AS
 SELECT
@@ -85,6 +108,43 @@ SELECT
   0                                           AS is_flagged
 FROM merchants m;
 
+PROMPT === Regions (sample polygons) for location grouping ===
+BEGIN
+  EXECUTE IMMEDIATE 'DROP TABLE fraud_regions_t PURGE';
+EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+CREATE TABLE fraud_regions_t (
+  region_id   NUMBER PRIMARY KEY,
+  region_name VARCHAR2(100),
+  geom        SDO_GEOMETRY
+);
+
+BEGIN
+  INSERT INTO user_sdo_geom_metadata (table_name, column_name, diminfo, srid)
+  VALUES ('FRAUD_REGIONS_T','GEOM',
+          SDO_DIM_ARRAY(
+            SDO_DIM_ELEMENT('LONG', -180, 180, 0.5),
+            SDO_DIM_ELEMENT('LAT',  -90,  90,  0.5)
+          ), 4326);
+EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+CREATE INDEX idx_regions_geom ON fraud_regions_t(geom) INDEXTYPE IS MDSYS.SPATIAL_INDEX;
+
+-- Two hemispheric regions for demo (NORTH, SOUTH)
+INSERT INTO fraud_regions_t(region_id, region_name, geom)
+VALUES (1,'NORTH', SDO_GEOMETRY(2003,4326,NULL,
+  SDO_ELEM_INFO_ARRAY(1,1003,3),
+  SDO_ORDINATE_ARRAY(-180,0, 180,90)));
+
+INSERT INTO fraud_regions_t(region_id, region_name, geom)
+VALUES (2,'SOUTH', SDO_GEOMETRY(2003,4326,NULL,
+  SDO_ELEM_INFO_ARRAY(1,1003,3),
+  SDO_ORDINATE_ARRAY(-180,-90, 180,0)));
+
+COMMIT;
+
 -- Customer <-> Device associations
 CREATE TABLE fraud_customer_devices_t AS
 SELECT DISTINCT
@@ -110,11 +170,13 @@ CREATE INDEX ix_ft_merchant ON fraud_transactions_t(merchant_id);
 COMMIT;
 
 PROMPT === Create Property Graph using base tables (no MVs, no views) ===
+BEGIN
+  EXECUTE IMMEDIATE q'[
 CREATE PROPERTY GRAPH fraud_graph
   VERTEX TABLES (
     fraud_customers_t   KEY (customer_id) LABEL customer  PROPERTIES (customer_id, first_name, last_name, risk_score, is_flagged),
     fraud_accounts_t    KEY (account_id)  LABEL account   PROPERTIES (account_id, account_number, account_type, balance, risk_score, is_flagged),
-    fraud_transactions_t KEY (transaction_id) LABEL transaction PROPERTIES (transaction_id, amount, transaction_date, risk_score, is_flagged),
+    fraud_transactions_t KEY (transaction_id) LABEL transaction PROPERTIES (transaction_id, amount, transaction_date, risk_score, is_flagged, tx_location),
     fraud_devices_t     KEY (device_id)   LABEL device    PROPERTIES (device_id, device_fingerprint, device_type, risk_score, is_flagged),
     fraud_merchants_t   KEY (merchant_id) LABEL merchant  PROPERTIES (merchant_id, merchant_name, category, risk_score, is_flagged)
   )
@@ -139,9 +201,14 @@ CREATE PROPERTY GRAPH fraud_graph
       KEY (customer_id, device_id)
       SOURCE KEY (customer_id) REFERENCES fraud_customers_t (customer_id)
       DESTINATION KEY (device_id) REFERENCES fraud_devices_t (device_id)
-  );
+  )
+]';
+EXCEPTION WHEN OTHERS THEN
+  DBMS_OUTPUT.PUT_LINE('CREATE PROPERTY GRAPH failed (ignore if tooling lacks DDL support): '||SQLERRM);
+END;
+/
 
-PROMPT === Verify graph exists ===
+PROMPT === Verify graph exists (if DDL supported) ===
 SET SQLFORMAT CSV
 SELECT graph_name FROM user_property_graphs WHERE UPPER(graph_name)='FRAUD_GRAPH';
 

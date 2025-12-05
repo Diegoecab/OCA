@@ -232,6 +232,63 @@ FROM GRAPH_TABLE(fraud_graph MATCH
     'paid_to'          AS edge_label
   )
 ) GT
+FETCH FIRST 20000 ROWS ONLY;
+
+PROMPT === Location-based: Flagged transactions per region (last 7 days; tabular) ===
+-- Groups flagged transactions by spatial regions using Oracle Spatial.
+-- Note: This is a tabular aggregation query (not for Graph Visualize).
+SELECT
+  r.region_name,
+  COUNT(*) AS flagged_tx_last_7d
+FROM fraud_transactions_t t
+JOIN fraud_regions_t r
+  ON SDO_ANYINTERACT(t.tx_location, r.geom) = 'TRUE'
+WHERE t.is_flagged = 1
+  AND t.transaction_date >= SYSDATE - 7
+GROUP BY r.region_name
+ORDER BY flagged_tx_last_7d DESC, r.region_name;
+
+PROMPT === Location-based: Merchants by region with flagged transactions (last 7 days; tabular) ===
+-- Shows merchants with many flagged transactions per region.
+-- Increase HAVING threshold to surface higher-risk clusters (e.g., >= 5).
+-- Note: This is a tabular aggregation query (not for Graph Visualize).
+SELECT
+  r.region_name,
+  t.merchant_id,
+  COUNT(*) AS flagged_tx_last_7d
+FROM fraud_transactions_t t
+JOIN fraud_regions_t r
+  ON SDO_ANYINTERACT(t.tx_location, r.geom) = 'TRUE'
+WHERE t.is_flagged = 1
+  AND t.transaction_date >= SYSDATE - 7
+GROUP BY r.region_name, t.merchant_id
+HAVING COUNT(*) >= 3
+ORDER BY flagged_tx_last_7d DESC, r.region_name, t.merchant_id
+FETCH FIRST 500 ROWS ONLY;
+
+PROMPT === Visual (region-filtered): Flagged paid_to edges in NORTH region (first 200) ===
+-- Visualize flagged transactions to merchants restricted to region = 'NORTH'
+-- Avoids subquery inside GRAPH_TABLE by projecting tx_location and filtering outside.
+SELECT
+  GT.EDGE_ID,
+  GT.SRC_VERTEX_ID,
+  GT.DST_VERTEX_ID,
+  GT.edge_label
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
+  WHERE t.is_flagged = 1
+    AND t.transaction_date >= SYSDATE - 7
+  COLUMNS (
+    EDGE_ID(pm)        AS EDGE_ID,
+    VERTEX_ID(t)       AS SRC_VERTEX_ID,
+    VERTEX_ID(m)       AS DST_VERTEX_ID,
+    t.tx_location      AS TX_LOC,
+    'paid_to_flagged_NORTH' AS edge_label
+  )
+) GT
+JOIN fraud_regions_t r
+  ON r.region_name = 'NORTH'
+ AND SDO_ANYINTERACT(GT.TX_LOC, r.geom) = 'TRUE'
 FETCH FIRST 200 ROWS ONLY;
 
 PROMPT === Two-hop ribbons: Accounts -> Transactions and Transactions -> Merchants (first 200 edges) ===
@@ -292,7 +349,7 @@ FROM GRAPH_TABLE(fraud_graph MATCH
 GROUP BY did, src_v, dst_v
 HAVING COUNT(*) >= 2
 ORDER BY flagged_count DESC, device_id
-FETCH FIRST 200 ROWS ONLY;
+FETCH FIRST 20000 ROWS ONLY;
 
 PROMPT === Potential Fraud Verification: Merchants with many flagged transactions (last 7 days) ===
 -- Adds MERCHANT_VERTEX_ID to satisfy SQL Developer Visualization (vertex view).
