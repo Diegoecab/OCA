@@ -266,3 +266,55 @@ FETCH FIRST 200 ROWS ONLY;
 
 -- Tip:
 -- After running any of these SELECTs, use the Visualize icon in SQL Developer to render the fan-in/fan-out structures.
+
+PROMPT === Potential Fraud Verification: Shared device flagged account pairs (last 7 days) ===
+-- Lists account pairs that share a device with flagged transactions within the last 7 days.
+-- Increase HAVING threshold to tighten signal (e.g., >= 3)
+SELECT
+  did       AS device_id,
+  a1        AS account_1,
+  a2        AS account_2,
+  flagged_count
+FROM (
+  SELECT
+    d.device_id AS did,
+    a1.account_id AS a1,
+    a2.account_id AS a2,
+    COUNT(*) AS flagged_count
+  FROM GRAPH_TABLE(fraud_graph MATCH
+    (a1 IS account)-[p1 IS performed_transaction]->(t1 IS transaction)-[h1 IS has_device]->(d IS device),
+    (a2 IS account)-[p2 IS performed_transaction]->(t2 IS transaction)-[h2 IS has_device]->(d IS device)
+    WHERE a1.account_id < a2.account_id
+      AND (t1.is_flagged = 1 OR t2.is_flagged = 1)
+      AND t1.transaction_date >= SYSDATE - 7
+      AND t2.transaction_date >= SYSDATE - 7
+    COLUMNS (
+      a1.account_id AS a1,
+      a2.account_id AS a2,
+      d.device_id   AS device_id
+    )
+  ) GT
+  GROUP BY d.device_id, a1, a2
+  HAVING COUNT(*) >= 2
+) S
+ORDER BY flagged_count DESC, device_id, account_1, account_2
+FETCH FIRST 200 ROWS ONLY;
+
+PROMPT === Potential Fraud Verification: Merchants with many flagged transactions (last 7 days) ===
+-- Aggregates per-merchant flagged transactions over the last 7 days.
+-- Increase HAVING threshold to surface higher-risk merchants (e.g., >= 5)
+SELECT
+  merchant_id,
+  COUNT(*) AS flagged_tx_last_7d
+FROM GRAPH_TABLE(fraud_graph MATCH
+  (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
+  WHERE t.is_flagged = 1
+    AND t.transaction_date >= SYSDATE - 7
+  COLUMNS (
+    m.merchant_id AS merchant_id
+  )
+) GT
+GROUP BY merchant_id
+HAVING COUNT(*) >= 3
+ORDER BY flagged_tx_last_7d DESC, merchant_id
+FETCH FIRST 200 ROWS ONLY;
