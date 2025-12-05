@@ -13,7 +13,7 @@ SELECT
 FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)
   COLUMNS (
-    a.vertex_id AS vertex_id,
+    id(a) AS vertex_id,
     'account'   AS label,
     a.account_id AS account_id
   )
@@ -29,7 +29,7 @@ SELECT
 FROM GRAPH_TABLE(fraud_graph MATCH
   (t IS transaction)
   COLUMNS (
-    t.vertex_id       AS vertex_id,
+    id(t)       AS vertex_id,
     'transaction'     AS label,
     t.transaction_id  AS transaction_id,
     t.risk_score      AS risk_score
@@ -46,9 +46,9 @@ SELECT
 FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)-[e IS performed_transaction]->(t IS transaction)
   COLUMNS (
-    e.edge_id       AS edge_id,
-    a.vertex_id     AS src_vertex_id,
-    t.vertex_id     AS dst_vertex_id,
+    id(e)       AS edge_id,
+    id(a)       AS src_vertex_id,
+    id(t)       AS dst_vertex_id,
     'performed_transaction' AS edge_label
   )
 ) GT
@@ -67,9 +67,9 @@ FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)-[p IS performed_transaction]->(t IS transaction)-[h IS has_device]->(d IS device)
   WHERE t.risk_score >= 90
   COLUMNS (
-    h.edge_id         AS edge_id,
-    t.vertex_id       AS src_vertex_id,
-    d.vertex_id       AS dst_vertex_id,
+    id(h)         AS edge_id,
+    id(t)         AS src_vertex_id,
+    id(d)         AS dst_vertex_id,
     t.transaction_id  AS transaction_id,
     d.device_id       AS device_id,
     t.risk_score      AS risk_score,
@@ -91,9 +91,9 @@ FROM GRAPH_TABLE(fraud_graph MATCH
   (a IS account)-[p IS performed_transaction]->(t IS transaction)-[pm IS paid_to]->(m IS merchant)
   WHERE t.is_flagged = 1
   COLUMNS (
-    pm.edge_id        AS edge_id,
-    t.vertex_id       AS src_vertex_id,
-    m.vertex_id       AS dst_vertex_id,
+    id(pm)        AS edge_id,
+    id(t)         AS src_vertex_id,
+    id(m)         AS dst_vertex_id,
     t.transaction_id  AS transaction_id,
     m.merchant_id     AS merchant_id,
     t.is_flagged      AS is_flagged,
@@ -121,8 +121,8 @@ FROM GRAPH_TABLE(fraud_graph MATCH
   COLUMNS (
     -- synthetic identifiers for visualization
     TO_CHAR(a1.account_id) || '-' || TO_CHAR(a2.account_id) || '-' || TO_CHAR(d.device_id) AS edge_id,
-    a1.vertex_id AS src_vertex_id,
-    a2.vertex_id AS dst_vertex_id,
+    id(a1) AS src_vertex_id,
+    id(a2) AS dst_vertex_id,
     a1.account_id AS a1_id,
     a2.account_id AS a2_id,
     d.device_id   AS device_id,
