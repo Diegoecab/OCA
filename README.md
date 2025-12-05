@@ -1,6 +1,6 @@
 # Oracle Property Graph Performance Demo (FRAUD_GRAPH)
 
-This project is a self-contained subset focused ONLY on the graph performance test and documentation. It excludes unrelated infrastructure files (e.g., Terraform), per request.
+This project is a self-contained subset focused ONLY on the graph performance test and documentation.
 
 What’s included here:
 - scripts/ (minimal set to create FRAUD_GRAPH and run the perf harness)
@@ -66,9 +66,19 @@ Files in this project
 How to publish this project as a clean repo
 - Initialize a new git repository in the graph-perf/ folder (so only these files are included)
 - Commit and push to your target repository (e.g., Diegoecab/OCA or a new repo)
-- Do NOT add the parent tree (oke-multi-ad-ha-demo) to avoid Terraform or unrelated files
+- Publish from graph-perf/ as the repository root.
 
-Notes on GRAPH_TABLE syntax in SQLcl/SQLPlus
+## Automated with Oracle Code Assist
+
+This end-to-end workflow (SQL generation, error remediation, performance tuning, and Git automation) was generated and executed automatically using Oracle Code Assist (Model: GPT5), without manual intervention. Oracle Code Assist was particularly helpful in:
+- Iterating on GRAPH_TABLE syntax across client parsing constraints, including SQL/PGQ “IS” label usage and the correct header form (GRAPH_TABLE(fraud_graph MATCH ... COLUMNS ...))
+- Diagnosing ORA errors and adjusting queries (e.g., adding COLUMNS, time windows, device-degree caps)
+- Proposing performance strategies to bound search space (7-day transaction window, device degree cap)
+- Automating repository creation and content publishing
+
+While these steps can be achieved manually, Oracle Code Assist significantly accelerated iteration, consistently applied best practices, and reduced human error, especially when refining query shapes and handling client-specific parsing nuances.
+
+## Notes on GRAPH_TABLE syntax in SQLcl/SQLPlus
 - Use SQL/PGQ “IS“ label syntax: (a IS account) not (a:account)
 - Use GRAPH_TABLE(fraud_graph MATCH ... COLUMNS (...)) — no comma after graph name
 - Always include a COLUMNS clause (even for COUNT(*))
